@@ -102,7 +102,7 @@
         </div>
     </div>
     <div class="control-group">
-        <label class="control-label" for="startEffectDelay">{{ _('Startup Effect Delay') }}</label>
+        <label class="control-label" for="startEffectDelay">{{ _('Startup Effect Speed') }}</label>
         <div class="controls">
             <input type="number" class="input-block-level" id="startEffectDelay" data-bind="value: settings.plugins.rgb_status.init_effect_delay">
         </div>
@@ -127,7 +127,7 @@
         </div>
     </div>
     <div class="control-group">
-        <label class="control-label" for="idleEffectWait">{{ _('Idle Effect Delay') }}</label>
+        <label class="control-label" for="idleEffectDelay">{{ _('Idle Effect Speed') }}</label>
         <div class="controls">
             <input type="number" class="input-block-level" id="idleEffectDelay" data-bind="value: settings.plugins.rgb_status.idle_effect_delay">
         </div>
@@ -152,7 +152,7 @@
         </div>
     </div>
     <div class="control-group">
-        <label class="control-label" for="pauseEffectDelay">{{ _('Pause Effect Delay') }}</label>
+        <label class="control-label" for="pauseEffectDelay">{{ _('Pause Effect Speed') }}</label>
         <div class="controls">
             <input type="number" class="input-block-level" id="pauseEffectDelay" data-bind="value: settings.plugins.rgb_status.pause_effect_delay">
         </div>
@@ -177,9 +177,20 @@
         </div>
     </div>
     <div class="control-group">
-        <label class="control-label" for="failEffectDelay">{{ _('Fail Effect Delay') }}</label>
+        <label class="control-label" for="failEffectDelay">{{ _('Fail Effect Speed') }}</label>
         <div class="controls">
             <input type="number" class="input-block-level" id="failEffectDelay" data-bind="value: settings.plugins.rgb_status.fail_effect_delay">
+        </div>
+    </div>
+    <div class="control-group">
+        <label class="control-label" for="failEffectTimeout">{{ _('Effect Timeout') }}</label>
+        <div class="controls">
+            <div class="input-append">
+                <input type="number" class="input-mini" id="failEffectTimeout" data-bind="value: settings.plugins.rgb_status.fail_effect_timeout">
+                <span class="add-on">s</span>
+            </div>
+            <input type="checkbox" id="failEffectEnableTimeout" data-bind="checked: settings.plugins.rgb_status.fail_effect_enable_timeout">
+            <span class="help-inline">Enable</span>    
         </div>
     </div>
 
@@ -202,9 +213,20 @@
         </div>
     </div>
     <div class="control-group">
-        <label class="control-label" for="doneEffectDelay">{{ _('Finish Effect Delay') }}</label>
+        <label class="control-label" for="doneEffectDelay">{{ _('Finish Effect Speed') }}</label>
         <div class="controls">
             <input type="number" class="input-block-level" id="doneEffectDelay" data-bind="value: settings.plugins.rgb_status.done_effect_delay">
+        </div>
+    </div>
+    <div class="control-group">
+        <label class="control-label" for="doneEffecttimeout">{{ _('Effect timeout') }}</label>
+        <div class="controls">
+            <div class="input-append">
+                <input type="number" class="input-mini" id="doneEffecttimeout" data-bind="value: settings.plugins.rgb_status.done_effect_timeout">
+                <span class="add-on">s</span>
+            </div>
+            <input type="checkbox" id="doneEffectEnableTimeout" data-bind="checked: settings.plugins.rgb_status.done_effect_enable_timeout">
+            <span class="help-inline">Enable</span>
         </div>
     </div>
 </form>

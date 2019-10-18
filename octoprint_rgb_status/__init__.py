@@ -5,6 +5,7 @@ import multiprocessing
 from rpi_ws281x import *
 from .utils import *
 from .basic_effects import *
+from threading import Timer
 
 
 STRIP_SETTINGS = ['led_count', 'led_pin', 'led_freq_hz', 'led_dma', 'led_invert', 'led_brightness', 'led_channel', 'strip_type']
@@ -172,10 +173,14 @@ class RGBStatusPlugin(
             'fail_effect': 'Pulse',
             'fail_effect_color': '#ff0000',
             'fail_effect_delay': 10,
+            'fail_effect_enable_timeout': True,           
+            'fail_effect_timeout': 60,
 
             'done_effect': 'Pulse',
             'done_effect_color': '#00ff00',
             'done_effect_delay': 10,
+            'done_effect_enable_timeout': True,
+            'done_effect_timeout': 60,
         }
 
     def on_settings_save(self, data):
@@ -261,6 +266,9 @@ class RGBStatusPlugin(
             hex_to_rgb(self._settings.get(['fail_effect_color'])),
             self._settings.get_int(['fail_effect_delay']),
         )
+        if self._settings.get_boolean(['fail_effect_enable_timeout']):
+            t = Timer(self._settings.get_int(['fail_effect_timeout']), self.effect_timeout)
+            t.start()
 
     def run_done_effect(self):
         self._logger.info('Starting Done Effect')
@@ -269,6 +277,12 @@ class RGBStatusPlugin(
             hex_to_rgb(self._settings.get(['done_effect_color'])),
             self._settings.get_int(['done_effect_delay']),
         )
+        if self._settings.get_boolean(['done_effect_enable_timeout']):
+            t = Timer(self._settings.get_int(['done_effect_timeout']), self.effect_timeout)
+            t.start()
+
+    def effect_timeout(self):
+        self.run_idle_effect()
 
     def on_event(self, event, payload):
         if event == 'PrintStarted':

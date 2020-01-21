@@ -14,7 +14,7 @@ plugin_package = "octoprint_rgb_status"
 plugin_name = "RGB Status"
 
 # The plugin's version. Can be overwritten within OctoPrint's internal data via __plugin_version__ in the plugin module
-plugin_version = "1.5.0"
+plugin_version = "1.6.0"
 
 # The plugin's description. Can be overwritten within OctoPrint's internal data via __plugin_description__ in the plugin
 # module
@@ -33,7 +33,7 @@ plugin_url = "https://github.com/EricHigdon/OctoPrint-Rgb_status"
 plugin_license = "AGPLv3"
 
 # Any additional requirements besides OctoPrint should be listed here
-plugin_requires = ['rpi_ws281x==4.1.0']
+plugin_requires = ['rpi_ws281x==4.2.3']
 
 ### --------------------------------------------------------------------------------------------------------------------
 ### More advanced options that you usually shouldn't have to touch follow after this point

@@ -1,17 +1,45 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, division, print_function, unicode_literals
 from rpi_ws281x import *
 from .utils import blend_colors
+from datetime import datetime
 import time
+import traceback
 
 
-def run_effect(effect, lock, queue, strip, color, delay, reverse=False):
+def run_effect(effect, lock, queue, settings, color, delay, shutdown_event, reverse=False, **kwargs):
     lock.acquire()
+    strip = Adafruit_NeoPixel(*settings)
+    strip.begin()
     try:
-        while queue.empty():
-            effect(strip, color, queue, delay, reverse=reverse)
-        while not queue.empty():
-            queue.get()
+        while not shutdown_event.is_set():
+           if not queue.empty():
+               message = queue.get()
+               if message == 'KILL':
+                   break
+               elif 'progress' in kwargs:
+                   kwargs['progress'] = int(message)
+           effect(strip, color, queue, delay, reverse=reverse, **kwargs)
     finally:
         lock.release()
+        while not queue.empty():
+            msg = queue.get_nowait()
+        queue.close()
+        queue.join_thread()
+
+def progress_effect(strip, color, queue, delay=0, iterations=1, reverse=False, progress=0, progress_color=None):
+   perc = float(progress) / 100 * float(strip.numPixels())
+   pixels_range = range(strip.numPixels())
+   if reverse:
+       pixels_range = reversed(pixels_range)
+   for i, p in enumerate(pixels_range):
+       if i+1 <= int(perc):
+           strip.setPixelColorRGB(p, *progress_color)
+       elif i+1 == int(perc)+1:
+           strip.setPixelColorRGB(p, *blend_colors(color, progress_color, (perc % 1)))
+       else:
+           strip.setPixelColorRGB(p, *color)
+   strip.show()
 
 # Define functions which animate LEDs in various ways.
 def solid_color(strip, color, queue, delay=0, iterations=1, reverse=False):
@@ -147,13 +175,14 @@ def knight_rider(strip, color, queue, delay, iterations=1, reverse=False):
         time.sleep(delay/100.0)
         
 
-def plasma(strip, color, queue, delay, iterations=1, reverse=False):
+def plasma(strip, color, queue, delay, iterations=1000, reverse=False):
     import colorsys
     import math
     pixels_range = list(range(strip.numPixels()))
-    for f in pixels_range:
-        x = f + 1.0
+    iterations_range = list(range(iterations))
+    for f in iterations_range:
         for i in pixels_range:
+            x = f + i
             hue = 4.0 + math.sin(x / 19.0) + math.sin(i / 9.0) + math.sin((x + i) / 25.0) + math.sin(math.sqrt(x**2.0 + i**2.0) / 8.0)
             rgb = colorsys.hsv_to_rgb(hue/8.0, 1, 1)
             color = tuple([int(round(c * 255.0)) for c in rgb])
@@ -161,11 +190,11 @@ def plasma(strip, color, queue, delay, iterations=1, reverse=False):
         strip.show()
         if not queue.empty():
             return
-        time.sleep(delay/100.0)
+        time.sleep(delay/50.0)
 
-    for f in reversed(pixels_range):
-        x = f + 1.0
+    for f in reversed(iterations_range):
         for i in pixels_range:
+            x = f + i
             hue = 4.0 + math.sin(x / 19.0) + math.sin(i / 9.0) + math.sin((x + i) / 25.0) + math.sin(math.sqrt(x**2.0 + i**2.0) / 8.0)
             rgb = colorsys.hsv_to_rgb(hue/8.0, 1, 1)
             color = tuple([int(round(c * 255.0)) for c in rgb])
@@ -173,4 +202,4 @@ def plasma(strip, color, queue, delay, iterations=1, reverse=False):
         strip.show()
         if not queue.empty():
             return
-        time.sleep(delay/100.0)
+        time.sleep(delay/50.0)

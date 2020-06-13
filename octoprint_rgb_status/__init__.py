@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, unicode_literals
+from __future__ import absolute_import, division, print_function, unicode_literals
 from octoprint import plugin
+from datetime import datetime, timedelta
 import multiprocessing
 from rpi_ws281x import *
 from .utils import *
@@ -27,8 +28,8 @@ STRIP_TYPES = {
     'SK6812_STRIP': SK6812_STRIP,
     'SK6812W_STRIP': SK6812W_STRIP,
 }
-IDLE_SETTINGS = ['idle_effect', 'idle_effect_color', 'idle_effect_delay', 'idle_effect_iterations', 'leds_reversed']
-DISCONNECTED_SETTINGS = ['disconnected_effect', 'disconnected_effect_color', 'disconnected_effect_delay', 'disconnected_effect_iterations']
+IDLE_SETTINGS = ['idle_effect', 'idle_effect_color', 'idle_effect_delay', 'leds_reversed']
+DISCONNECTED_SETTINGS = ['disconnected_effect', 'disconnected_effect_color', 'disconnected_effect_delay']
 EFFECTS = {
     'Solid Color': solid_color,
     'Color Wipe': color_wipe,
@@ -40,7 +41,6 @@ EFFECTS = {
     'Knight Rider': knight_rider,
     'Plasma': plasma,
 }
-
 
 class RGBStatusPlugin(
         plugin.AssetPlugin,
@@ -136,7 +136,7 @@ class RGBStatusPlugin(
         if command == 'flipswitch':
             import flask
             if getattr(self, '_lightsOn', True):
-                self.run_effect('Solid Color', (0, 0, 0,), delay=10)
+                self.run_effect('Solid Color', (0, 0, 0,), delay=10, force=True)
                 self._lightsOn = False
             else:
                 self._lightsOn = True
@@ -177,6 +177,7 @@ class RGBStatusPlugin(
             'init_effect': 'Rainbow Cycle',
             'init_effect_color': None,
             'init_effect_delay': 20,
+            'init_effect_min_time': 5,
 
             'idle_effect': 'Solid Color',
             'idle_effect_color': '#00ff00',
@@ -257,8 +258,9 @@ class RGBStatusPlugin(
             else:
                 settings.append(self._settings.get_int([setting]))
         try:
-            self.strip = Adafruit_NeoPixel(*settings)
-            self.strip.begin()
+            #self.strip = Adafruit_NeoPixel(*settings)
+            #self.strip.begin()
+            self.strip = settings
             self._lightsOn = True
         except Exception as e:
             self._logger.error(e)
@@ -268,6 +270,7 @@ class RGBStatusPlugin(
             self._settings.get(['init_effect']),
             hex_to_rgb(self._settings.get(['init_effect_color'])),
             self._settings.get_int(['init_effect_delay']),
+            min_time=self._settings.get_int(['init_effect_min_time'])
         )
         if self._printer.is_operational():
             self.run_idle_effect()
@@ -275,6 +278,10 @@ class RGBStatusPlugin(
             self.run_disconnected_effect()
 
     def on_after_startup(self):
+        if hasattr(multiprocessing, 'get_context'):
+            self.context = multiprocessing.get_context('spawn')
+        else:
+            self.context = multiprocessing
         self.init_strip()
 
     def run_idle_effect(self):
@@ -328,8 +335,12 @@ class RGBStatusPlugin(
 
     def on_event(self, event, payload):
         if event == 'PrintStarted':
-            progress_base_color = hex_to_rgb(self._settings.get(['progress_base_color']))
-            self.run_effect('Solid Color', progress_base_color, delay=10)
+            self.run_effect(
+                progress_effect,
+                hex_to_rgb(self._settings.get(['progress_base_color'])),
+                progress=0,
+                progress_color=hex_to_rgb(self._settings.get(['progress_color'])),
+            )
         elif event == 'PrintFailed':
             self.run_fail_effect()
         elif event == 'PrintPaused':
@@ -344,52 +355,78 @@ class RGBStatusPlugin(
             self.run_disconnected_effect()
 
     def on_print_progress(self, storage, path, progress):
-	if progress == 100 and hasattr(self, '_effect') and self._effect.is_alive():
-	    self._logger.info('Progress was set to 100, but the idle effect was already running. Ignoring progress update')
+        if progress == 100 and hasattr(self, '_effect') and self._effect.is_alive() and self._effect.name != 'Progress':
+            self._logger.info('Progress was set to 100, but the idle effect was already running. Ignoring progress update')
+            return
         if self.strip is not None and self._settings.get_boolean(['show_progress']):
-            self.kill_effect()
             self._logger.info('Updating Progress LEDs: ' + str(progress))
-            perc = float(progress) / 100 * float(self.strip.numPixels())
-            base_color = hex_to_rgb(self._settings.get(['progress_base_color']))
-            progress_color = hex_to_rgb(self._settings.get(['progress_color']))
-            pixels_reversed = self._settings.get_boolean(['leds_reversed'])
-            pixels_range = range(self.strip.numPixels())
-            if pixels_reversed:
-                pixels_range = reversed(pixels_range)
-            for i, p in enumerate(pixels_range):
-                if i+1 <= int(perc):
-                    self.strip.setPixelColorRGB(p, *progress_color)
-                elif i+1 == int(perc)+1:
-                    self.strip.setPixelColorRGB(p, *blend_colors(base_color, progress_color, (perc % 1)))
-                else:
-                    self.strip.setPixelColorRGB(p, *base_color)
-            self.strip.show()
+            if self._effect.name != 'Progress':
+                self.run_effect(
+                    progress_effect,
+                    hex_to_rgb(self._settings.get(['progress_base_color'])),
+                    progress=progress,
+                    progress_color=hex_to_rgb(self._settings.get(['progress_color'])),
+                )
+            elif hasattr(self, '_queue'):
+                self._queue.put(progress)
         elif self.strip is None:
             self._logger.error('Error setting progress: The strip object does not exist. Did it fail to initialize?')
 
     def effect_is_alive(self):
         return hasattr(self, '_effect') and self._effect.is_alive()
 
-    def kill_effect(self):
-        if self.effect_is_alive():
-            self._queue.put('KILL')
-            self._effect.join()
-            self._effect.terminate()
-            self._logger.info('Killed effect: ' + self._effect.name)
+    def effect_can_be_killed(self, force=False):
+        if not self.effect_is_alive():
+            self._logger.info("effect is not alive. It can't be killed")
+            return False
+        if force or self._effect.end_ts < datetime.now():
+            return True
+        else:
+            return False
 
-    def run_effect(self, effect_name, color=None, delay=50, iterations=1):
+    def kill_effect(self, force=False):
+        while self.effect_is_alive():
+            if self.effect_can_be_killed(force=force):
+                self._logger.info('Putting KILL code in queue')
+                self._queue.put('KILL')
+                delattr(self, '_queue')
+                self._shutdown_event.set()
+                delattr(self, '_shutdown_event')
+                self._logger.info('Joining Effect process')
+                self._effect.join(3)
+                if self._effect.is_alive():
+                    self._logger.info('Terminating effect')
+                    self._effect.terminate()
+                self._logger.info('Killed effect: ' + self._effect.name)
+                break
+        else:
+            self._logger.info('Effect is not alive')
+
+    def run_effect(self, effect_name, color=None, delay=50, min_time=0, force=False, **kwargs):
         if getattr(self, 'strip', None) is not None and getattr(self, '_lightsOn', False):
-            effect = EFFECTS.get(effect_name)
+            if isinstance(effect_name, str):
+                effect = EFFECTS.get(effect_name)
+            else:
+                effect = effect_name
+                effect_name = 'Progress'
             if effect is not None:
-                if not hasattr(self, '_queue'):
-                    self._queue = multiprocessing.Queue()
                 if not hasattr(self, '_lock'):
-                    self._lock = multiprocessing.Lock()
-                self.kill_effect()
+                    self._lock = self.context.Lock()
+                self.kill_effect(force=force)
+                if not hasattr(self, '_queue'):
+                    self._queue = self.context.Queue()
+                if not hasattr(self, '_shutdown_event'):
+                    self._shutdown_event = self.context.Event()
                 reverse = self._settings.get_boolean(['leds_reversed'])
                 self._logger.info('Starting new effect {}'.format(effect_name))
-                self._effect = multiprocessing.Process(target=run_effect, args=(effect, self._lock, self._queue, self.strip, color, delay, reverse), name=effect_name)
+                self._effect = self.context.Process(
+                    target=run_effect,
+                    args=(effect, self._lock, self._queue, self.strip, color, delay, self._shutdown_event, reverse),
+                    kwargs=kwargs,
+                    name=effect_name
+                )
                 self._effect.start()
+                self._effect.end_ts = datetime.now() + timedelta(seconds=min_time)
                 self._logger.info('Started new effect {}'.format(self._effect))
             else:
                 self._logger.warn('The effect {} was not found. Did you remove that effect?'.format(effect))
@@ -397,6 +434,10 @@ class RGBStatusPlugin(
             self._logger.error('Error running effect: The strip object does not exist. Did it fail to initialize?')
 
     def on_shutdown(self):
+        self._logger.info('Shutting down RGB Status:')
+        self._logger.info('1. Turning off LEDs')
+        self.run_effect('Solid Color', (0, 0, 0,), delay=10, force=True)
+        self._logger.info('2. Killing the current effect')
         self.kill_effect()
 
     def get_update_information(self, *args, **kwargs):
